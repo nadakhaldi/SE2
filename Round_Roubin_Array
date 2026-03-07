@@ -1,0 +1,301 @@
+#include <stdio.h>
+#include <stdlib.h>
+#define MAX_P 10
+
+struct Process {
+    int name;
+    int arr;
+    int bur;
+    int rem_t;
+    int done;
+    int tat;
+    int wt;
+    int execution_count;
+    int first_execution_time;
+    int response_time;
+};
+
+void read_processes(struct Process processes[], int n, int *qt) {
+    do {
+        printf("Enter quantum time (>0): ");
+        if (scanf("%d", qt) != 1) {
+            printf("ERROR: Invalid input! Please enter a number.\n");
+            while (getchar() != '\n');
+            *qt = 0;
+            continue;
+        }
+        if (*qt <= 0) printf("ERROR: Quantum must be > 0! Try again.\n");
+    } while (*qt <= 0);
+
+    for (int i = 0; i < n; i++) {
+        processes[i].name = i + 1;
+        do {
+            printf("Process P%d Arrival time (>=0): ", i + 1);
+            if (scanf("%d", &processes[i].arr) != 1) {
+                printf("ERROR: Invalid input! Please enter a number.\n");
+                while (getchar() != '\n');
+                processes[i].arr = -1;
+                continue;
+            }
+            if (processes[i].arr < 0) printf("ERROR: Arrival time must be >= 0! Try again.\n");
+        } while (processes[i].arr < 0);
+
+        do {
+            printf("Process P%d Burst time (>0): ", i + 1);
+            if (scanf("%d", &processes[i].bur) != 1) {
+                printf("ERROR: Invalid input! Please enter a number.\n");
+                while (getchar() != '\n');
+                processes[i].bur = 0;
+                continue;
+            }
+            if (processes[i].bur <= 0) printf("ERROR: Burst time must be > 0! Try again.\n");
+        } while (processes[i].bur <= 0);
+
+        processes[i].rem_t = processes[i].bur;
+        processes[i].execution_count = 0;
+        processes[i].first_execution_time = -1;
+        processes[i].response_time = -1;
+    }
+
+    for (int i = 0; i < n; i++) {
+        for (int j = i + 1; j < n; j++) {
+            if (processes[j].arr < processes[i].arr) {
+                struct Process temp = processes[i];
+                processes[i] = processes[j];
+                processes[j] = temp;
+            }
+        }
+    }
+}
+
+void display_ready_queue(struct Process processes[], int n, int qt) {
+    printf("\n╔════════════════════════════════════════╗\n");
+    printf("║         Ready Queue (FIFO)            ║\n");
+    printf("╚════════════════════════════════════════╝\n\n");
+
+    printf("╔═════════╦═════════╦═══════╗\n");
+    printf("║ Process ║ Arrival ║ Burst ║\n");
+    printf("╠═════════╬═════════╬═══════╣\n");
+    
+    for (int i = 0; i < n; i++) {
+        printf("║ P%-6d ║ %-7d ║ %-5d ║\n",
+               processes[i].name,
+               processes[i].arr,
+               processes[i].bur);
+    }
+    
+    printf("╚═════════╩═════════╩═══════╝\n");
+    printf("\nQuantum Time (Time Slice): %d ms\n", qt);
+}
+
+void display_queue_state(struct Process processes[], int n, int current_time, int running_process) {
+    printf("\n┌─ Time: %d ms ─────────────────────────────┐\n", current_time);
+    printf("│ Running: P%d\n", running_process);
+    printf("│ Queue: ");
+    
+    int first = 1;
+    for (int i = 0; i < n; i++) {
+        if (processes[i].rem_t > 0 && processes[i].arr <= current_time && processes[i].name != running_process) {
+            if (!first) printf(" → ");
+            printf("P%d(%dms)", processes[i].name, processes[i].rem_t);
+            first = 0;
+        }
+    }
+    
+    if (first) printf("(Empty)");
+    printf("\n└───────────────────────────────────────────┘\n");
+}
+
+void round_robin(struct Process processes[], int n, int qt) {
+    int time = 0;
+    float total_wt = 0, total_tat = 0;
+    int total_cpu_time = 0;
+
+    int gantt_process[1000];
+    int gantt_start[1000];
+    int gantt_end[1000];
+    int index = 0;
+
+    printf("\n╔════════════════════════════════════════╗\n");
+    printf("║     Process Execution Timeline        ║\n");
+    printf("╚════════════════════════════════════════╝\n");
+
+    while (1) {
+        int done_flag = 1;
+        int executed_this_round = 0;
+
+        for (int i = 0; i < n; i++) {
+            if (processes[i].rem_t > 0 && processes[i].arr <= time) {
+                done_flag = 0;
+                executed_this_round = 1;
+
+                int slice = (processes[i].rem_t > qt) ? qt : processes[i].rem_t;
+
+                gantt_process[index] = processes[i].name;
+                gantt_start[index] = time;
+                gantt_end[index] = time + slice;
+                index++;
+
+                
+                if (processes[i].first_execution_time == -1) {
+                    processes[i].first_execution_time = time;
+                    processes[i].response_time = time - processes[i].arr;
+                }
+
+                processes[i].execution_count++;
+
+                // عرض حالة Queue
+                display_queue_state(processes, n, time, processes[i].name);
+                
+                if (processes[i].execution_count == 1) {
+                    printf("Time: %d-%dms  ► P%d Running (1st time)\n", 
+                           time, time + slice, processes[i].name);
+                } else {
+                    printf("Time: %d-%dms  ► P%d Running (%dth time - Resumed)\n", 
+                           time, time + slice, processes[i].name, processes[i].execution_count);
+                }
+
+                int executed_before = processes[i].bur - processes[i].rem_t;
+                processes[i].rem_t -= slice;
+                time += slice;
+                total_cpu_time += slice;
+
+                if (processes[i].rem_t == 0) {
+                    processes[i].done = time;
+                    processes[i].tat = processes[i].done - processes[i].arr;
+                    processes[i].wt = processes[i].tat - processes[i].bur;
+                    total_tat += processes[i].tat;
+                    total_wt += processes[i].wt;
+                    printf("          [Completed] P%d finished at time %d\n\n", processes[i].name, time);
+                } else {
+                    printf("          [Save State] P%d (Executed: %d ms, Remaining: %d ms)\n", 
+                           processes[i].name, processes[i].bur - processes[i].rem_t, processes[i].rem_t);
+                    printf("          [Back to Queue] P%d waiting...\n\n", processes[i].name);
+                }
+            }
+        }
+
+        if (!executed_this_round) {
+            int all_done = 1;
+            for (int i = 0; i < n; i++)
+                if (processes[i].rem_t > 0) all_done = 0;
+            if (all_done) break;
+
+            gantt_process[index] = 0;
+            gantt_start[index] = time;
+            gantt_end[index] = time + 1;
+            index++;
+            printf("\n┌─ Time: %d ms ─────────────────────────────┐\n", time);
+            printf("│ Running: CPU Idle\n");
+            printf("│ Queue: ");
+            
+            int first = 1;
+            for (int i = 0; i < n; i++) {
+                if (processes[i].rem_t > 0 && processes[i].arr <= time) {
+                    if (!first) printf(" → ");
+                    printf("P%d(%dms)", processes[i].name, processes[i].rem_t);
+                    first = 0;
+                }
+            }
+            printf("\n└───────────────────────────────────────────┘\n");
+            
+            printf("Time: %d-%dms  ► CPU Idle\n\n", time, time + 1);
+            time++;
+        }
+
+        if (done_flag) break;
+    }
+
+    printf("\n╔════════════════════════════════════════╗\n");
+    printf("║        Gantt Chart (Round Robin)       ║\n");
+    printf("╚════════════════════════════════════════╝\n\n");
+
+    int col_width = 8;
+
+    printf("|");
+    for (int i = 0; i < index; i++) {
+        if (gantt_process[i] == 0) 
+            printf("%-*s|", col_width - 1, "Idle");
+        else 
+            printf("%-*s|", col_width - 1, (char[]){' ', 'P', '0' + gantt_process[i], ' ', ' ', ' ', ' ', '\0'});
+    }
+    printf("\n");
+
+    printf("|");
+    for (int i = 0; i < index; i++) {
+        printf("%-*d|", col_width - 1, gantt_start[i]);
+    }
+    printf("%d\n", gantt_end[index - 1]);
+
+ 
+    printf("\n╔════════════════════════════════════════════════════════════════════════╗\n");
+    printf("║      Process Scheduling Details with Execution Information           ║\n");
+    printf("╚════════════════════════════════════════════════════════════════════════╝\n\n");
+
+    printf("╔═════════╦═════════╦═══════╦════════════╦════════════╦═════════════╦══════════╦══════════╗\n");
+    printf("║ Process ║ Arrival ║ Burst ║ Completion ║ Turnaround ║   Waiting   ║ Response ║ Exec Cnt ║\n");
+    printf("╠═════════╬═════════╬═══════╬════════════╬════════════╬═════════════╬══════════╬══════════╣\n");
+    
+    for (int i = 0; i < n; i++) {
+        printf("║ P%-6d ║ %-7d ║ %-5d ║ %-10d ║ %-10d ║ %-11d ║ %-8d ║ %-8d ║\n",
+               processes[i].name,
+               processes[i].arr,
+               processes[i].bur,
+               processes[i].done,
+               processes[i].tat,
+               processes[i].wt,
+               processes[i].response_time,
+               processes[i].execution_count);
+    }
+    
+    printf("╠═════════╬═════════╬═══════╬════════════╬════════════╬═════════════╬══════════╬══════════╣\n");
+    printf("║ Average ║         ║       ║            ║ %-10.2f ║ %-11.2f ║          ║          ║\n", 
+           total_tat / n, total_wt / n);
+    printf("╚═════════╩═════════╩═══════╩════════════╩════════════╩═════════════╩══════════╩══════════╝\n");
+
+    
+    printf("\n╔════════════════════════════════════════╗\n");
+    printf("║    Additional Statistics                ║\n");
+    printf("╠════════════════════════════════════════╣\n");
+    printf("║ Total Execution Time: %d ms            ║\n", gantt_end[index - 1]);
+    printf("║ Total CPU Time:       %d ms            ║\n", total_cpu_time);
+    printf("║ CPU Utilization:      %.2f%%           ║\n", 
+           (total_cpu_time * 100.0) / gantt_end[index - 1]);
+    printf("║ Number of Processes:  %d               ║\n", n);
+    printf("║ Quantum Time:         %d ms            ║\n", qt);
+    printf("╚════════════════════════════════════════╝\n");
+}
+
+int main() {
+    struct Process processes[MAX_P];
+    int n, qt;
+
+    printf("╔════════════════════════════════════════╗\n");
+    printf("║   Round Robin Scheduling Simulator     ║\n");
+    printf("╚════════════════════════════════════════╝\n\n");
+
+    do {
+        printf("Enter number of processes (1-%d): ", MAX_P);
+        if (scanf("%d", &n) != 1) {
+            printf("ERROR: Invalid input! Please enter a number.\n");
+            while (getchar() != '\n');
+            n = 0;
+            continue;
+        }
+        if (n < 1 || n > MAX_P) printf("ERROR: Invalid number of processes! Try again.\n");
+    } while (n < 1 || n > MAX_P);
+
+    read_processes(processes, n, &qt);
+    
+    // عرض Ready Queue قبل بدء Round Robin
+    display_ready_queue(processes, n, qt);
+    
+    printf("\n\nPress Enter to start Round Robin scheduling...\n");
+    getchar();
+    getchar();
+    
+  
+    round_robin(processes, n, qt);
+
+    return 0;
+}
