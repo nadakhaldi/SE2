@@ -1,0 +1,525 @@
+#include <stdio.h>
+#include <stdlib.h>
+#define MAX_P 10
+
+struct Process {
+    int name;
+    int arr;
+    int bur;
+    int rem_t;
+    int done;
+    int tat;
+    int wt;
+    int execution_count;
+    int first_execution_time;
+    int response_time;
+};
+
+// Ready Queue
+struct QueueNode {
+    struct Process* process;
+    struct QueueNode* next;
+};
+
+// هيكلـ Ready Queue
+struct ReadyQueue {
+    struct QueueNode* front;
+    struct QueueNode* rear;
+};
+
+
+struct Process processes[MAX_P];
+int process_count = 0;
+int quantum_time = 0;
+
+void init_queue(struct ReadyQueue* q) {
+    q->front = NULL;
+    q->rear = NULL;
+}
+
+int is_queue_empty(struct ReadyQueue* q) {
+    return q->front == NULL;
+}
+
+void enqueue(struct ReadyQueue* q, struct Process* p) {
+    struct QueueNode* new_node = (struct QueueNode*)malloc(sizeof(struct QueueNode));
+    new_node->process = p;
+    new_node->next = NULL;
+    
+    if (is_queue_empty(q)) {
+        q->front = new_node;
+        q->rear = new_node;
+    } else {
+        q->rear->next = new_node;
+        q->rear = new_node;
+    }
+}
+
+struct Process* dequeue(struct ReadyQueue* q) {
+    if (is_queue_empty(q)) {
+        return NULL;
+    }
+    
+    struct QueueNode* temp = q->front;
+    struct Process* p = temp->process;
+    q->front = q->front->next;
+    
+    if (q->front == NULL) {
+        q->rear = NULL;
+    }
+    
+    free(temp);
+    return p;
+}
+
+void free_queue(struct ReadyQueue* q) {
+    while (!is_queue_empty(q)) {
+        dequeue(q);
+    }
+}
+
+void clear_input_buffer() {
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+}
+
+void add_process() {
+    if (process_count >= MAX_P) {
+        printf("\n[!] Maximum number of processes reached (%d)!\n", MAX_P);
+        return;
+    }
+    
+    printf("\n--- Add New Process ---\n");
+    
+    //  هنا بش ماشي يولي يخدملي بوحدة ديجا كاينة كيما دار في 5 البحث عن أول رقم متاح
+    int new_name = 1;
+    while (1) {
+        int found = 0;
+        for (int i = 0; i < process_count; i++) {
+            if (processes[i].name == new_name) {
+                found = 1;
+                break;
+            }
+        }
+        if (!found) break;
+        new_name++;
+    }
+    
+    processes[process_count].name = new_name;
+    
+    do {
+        printf("Process P%d Arrival time (>=0): ", new_name);
+        if (scanf("%d", &processes[process_count].arr) != 1) {
+            printf("ERROR: Invalid input! Please enter a number.\n");
+            clear_input_buffer();
+            processes[process_count].arr = -1;
+            continue;
+        }
+        if (processes[process_count].arr < 0) printf("ERROR: Arrival time must be >= 0! Try again.\n");
+    } while (processes[process_count].arr < 0);
+
+    do {
+        printf("Process P%d Burst time (>0): ", new_name);
+        if (scanf("%d", &processes[process_count].bur) != 1) {
+            printf("ERROR: Invalid input! Please enter a number.\n");
+            clear_input_buffer();
+            processes[process_count].bur = 0;
+            continue;
+        }
+        if (processes[process_count].bur <= 0) printf("ERROR: Burst time must be > 0! Try again.\n");
+    } while (processes[process_count].bur <= 0);
+
+    processes[process_count].rem_t = processes[process_count].bur;
+    processes[process_count].execution_count = 0;
+    processes[process_count].first_execution_time = -1;
+    processes[process_count].response_time = -1;
+    
+    process_count++;
+    printf("\n[OK] Process P%d added successfully!\n", new_name);
+}
+
+void remove_process() {
+    if (process_count == 0) {
+        printf("\n[!] No processes to remove!\n");
+        return;
+    }
+    
+    int pid;
+    printf("\n--- Remove Process ---\n");
+    printf("Current processes: ");
+    for (int i = 0; i < process_count; i++) {
+        printf("P%d ", processes[i].name);
+    }
+    printf("\nEnter process number to remove: ");
+    scanf("%d", &pid);
+    
+// for find witch one we went to remove
+    int index_to_remove = -1;
+    for (int i = 0; i < process_count; i++) {
+        if (processes[i].name == pid) {
+            index_to_remove = i;
+            break;
+        }
+    }
+    
+    if (index_to_remove == -1) {
+        printf("[X] Process P%d not found!\n", pid);
+        return;
+    }
+    
+    printf("\n[OK] Removing P%d...\n", pid);
+    
+    // حذف العملية وتحريك الباقي
+    for (int i = index_to_remove; i < process_count - 1; i++) {
+        processes[i] = processes[i + 1];
+    }
+    
+    process_count--;
+    
+    // بش ميعاودش يرقمهم يخليلهم اساميهم نفسهم
+    printf("\nProcesses after removal:\n");
+    for (int i = 0; i < process_count; i++) {
+        printf("P%d (Arrival: %d, Burst: %d)\n", 
+               processes[i].name, 
+               processes[i].arr, 
+               processes[i].bur);
+    }
+}
+
+void set_quantum() {
+    printf("\n--- Set Quantum Time ---\n");
+    do {
+        printf("Enter quantum time (>0): ");
+        if (scanf("%d", &quantum_time) != 1) {
+            printf("ERROR: Invalid input! Please enter a number.\n");
+            clear_input_buffer();
+            quantum_time = 0;
+            continue;
+        }
+        if (quantum_time <= 0) printf("ERROR: Quantum must be > 0! Try again.\n");
+    } while (quantum_time <= 0);
+    printf("\n[OK] Quantum time set to %d ms\n", quantum_time);
+}
+
+void display_processes() {
+    printf("\n+--------------------------------------+\n");
+    printf("|         Current Processes            |\n");
+    printf("+--------------------------------------+\n\n");
+    
+    if (process_count == 0) {
+        printf("No processes added yet.\n");
+        return;
+    }
+    
+    printf("+---------+---------+-------+\n");
+    printf("| Process | Arrival | Burst |\n");
+    printf("+---------+---------+-------+\n");
+    
+    for (int i = 0; i < process_count; i++) {
+        printf("| P%-6d | %-7d | %-5d |\n",
+               processes[i].name,
+               processes[i].arr,
+               processes[i].bur);
+    }
+    
+    printf("+---------+---------+-------+\n");
+    
+    if (quantum_time > 0) {
+        printf("\nQuantum Time: %d ms\n", quantum_time);
+    } else {
+        printf("\n[!] Quantum Time not set!\n");
+    }
+}
+
+void sort_processes_by_arrival() {
+    for (int i = 0; i < process_count; i++) {
+        for (int j = i + 1; j < process_count; j++) {
+            if (processes[j].arr < processes[i].arr) {
+                struct Process temp = processes[i];
+                processes[i] = processes[j];
+                processes[j] = temp;
+            }
+        }
+    }
+    // Renumber after sorting
+    for (int i = 0; i < process_count; i++) {
+        processes[i].name = i + 1;
+    }
+}
+
+void display_queue_state_linked(struct ReadyQueue* q, int current_time, int running_process) {
+    printf("\n+----- Time: %d ms ----------------------+\n", current_time);
+    if (running_process > 0) {
+        printf("| Running: P%d\n", running_process);
+    } else {
+        printf("| Running: CPU Idle\n");
+    }
+    printf("| Queue: ");
+    
+    if (is_queue_empty(q)) {
+        printf("(Empty)");
+    } else {
+        struct QueueNode* current = q->front;
+        int first = 1;
+        while (current != NULL) {
+            if (!first) printf(" -> ");
+            printf("P%d(%dms)", current->process->name, current->process->rem_t);
+            first = 0;
+            current = current->next;
+        }
+    }
+    
+    printf("\n+---------------------------------------+\n");
+}
+
+void run_simulation() {
+    if (process_count == 0) {
+        printf("\n[!] No processes to simulate! Please add processes first.\n");
+        return;
+    }
+    
+    if (quantum_time <= 0) {
+        printf("\n[!] Quantum time not set! Please set quantum time first.\n");
+        return;
+    }
+    
+    // Reset process states
+    for (int i = 0; i < process_count; i++) {
+        processes[i].rem_t = processes[i].bur;
+        processes[i].execution_count = 0;
+        processes[i].first_execution_time = -1;
+        processes[i].response_time = -1;
+    }
+    
+    // Sort processes by arrival time
+    sort_processes_by_arrival();
+    
+    int time = 0;
+    float total_wt = 0, total_tat = 0;
+    int total_cpu_time = 0;
+    int completed = 0;
+
+    int gantt_process[1000];
+    int gantt_start[1000];
+    int gantt_end[1000];
+    int index = 0;
+
+    struct ReadyQueue ready_queue;
+    init_queue(&ready_queue);
+    
+    int next_arrival_index = 0;
+
+    printf("\n+--------------------------------------+\n");
+    printf("|     Starting Round Robin Simulation  |\n");
+    printf("+--------------------------------------+\n");
+
+    // Add processes that arrive at time 0
+    while (next_arrival_index < process_count && processes[next_arrival_index].arr == 0) {
+        enqueue(&ready_queue, &processes[next_arrival_index]);
+        next_arrival_index++;
+    }
+
+    while (completed < process_count) {
+        if (!is_queue_empty(&ready_queue)) {
+            struct Process* current = dequeue(&ready_queue);
+            
+            int slice = (current->rem_t > quantum_time) ? quantum_time : current->rem_t;
+
+            gantt_process[index] = current->name;
+            gantt_start[index] = time;
+            gantt_end[index] = time + slice;
+            index++;
+
+            // Save first execution info
+            if (current->first_execution_time == -1) {
+                current->first_execution_time = time;
+                current->response_time = time - current->arr;
+            }
+
+            current->execution_count++;
+
+            // Add new processes that arrived during this quantum
+            for (int i = next_arrival_index; i < process_count; i++) {
+                if (processes[i].arr <= time + slice && processes[i].rem_t > 0) {
+                    enqueue(&ready_queue, &processes[i]);
+                    next_arrival_index = i + 1;
+                }
+            }
+
+            display_queue_state_linked(&ready_queue, time, current->name);
+            
+            if (current->execution_count == 1) {
+                printf("Time: %d-%dms  >> P%d Running (1st time)\n", 
+                       time, time + slice, current->name);
+            } else {
+                printf("Time: %d-%dms  >> P%d Running (%dth time - Resumed)\n", 
+                       time, time + slice, current->name, current->execution_count);
+            }
+
+            current->rem_t -= slice;
+            time += slice;
+            total_cpu_time += slice;
+
+            if (current->rem_t == 0) {
+                current->done = time;
+                current->tat = current->done - current->arr;
+                current->wt = current->tat - current->bur;
+                total_tat += current->tat;
+                total_wt += current->wt;
+                completed++;
+                printf("          [Completed] P%d finished at time %d\n\n", current->name, time);
+            } else {
+                printf("          [Save State] P%d (Executed: %d ms, Remaining: %d ms)\n", 
+                       current->name, current->bur - current->rem_t, current->rem_t);
+                printf("          [Back to Queue] P%d waiting...\n\n", current->name);
+                
+                enqueue(&ready_queue, current);
+            }
+        } else {
+            // CPU Idle
+            gantt_process[index] = 0;
+            gantt_start[index] = time;
+            gantt_end[index] = time + 1;
+            index++;
+            
+            printf("\n+----- Time: %d ms ----------------------+\n", time);
+            printf("| Running: CPU Idle\n");
+            printf("| Queue: ");
+            
+            int any_arrived = 0;
+            while (next_arrival_index < process_count && processes[next_arrival_index].arr <= time) {
+                enqueue(&ready_queue, &processes[next_arrival_index]);
+                if (!any_arrived) {
+                    printf("P%d(%dms)", processes[next_arrival_index].name, processes[next_arrival_index].rem_t);
+                } else {
+                    printf(" -> P%d(%dms)", processes[next_arrival_index].name, processes[next_arrival_index].rem_t);
+                }
+                next_arrival_index++;
+                any_arrived = 1;
+            }
+            
+            if (!any_arrived) printf("(Empty)");
+            
+            printf("\n+---------------------------------------+\n");
+            printf("Time: %d-%dms  >> CPU Idle\n\n", time, time + 1);
+            time++;
+        }
+    }
+
+    printf("\n╔════════════════════════════════════════╗\n");
+    printf("║        Gantt Chart (Round Robin)       ║\n");
+    printf("╚════════════════════════════════════════╝\n\n");
+
+    int col_width = 8;
+
+    printf("|");
+    for (int i = 0; i < index; i++) {
+        if (gantt_process[i] == 0) 
+            printf("%-*s|", col_width - 1, "Idle");
+        else 
+            printf("%-*s|", col_width - 1, (char[]){' ', 'P', '0' + gantt_process[i], ' ', ' ', ' ', ' ', '\0'});
+    }
+    printf("\n");
+
+    printf("|");
+    for (int i = 0; i < index; i++) {
+        printf("%-*d|", col_width - 1, gantt_start[i]);
+    }
+    printf("%d\n", gantt_end[index - 1]);
+
+    printf("\n+------------------------------------------------------------+\n");
+    printf("|              Simulation Results                            |\n");
+    printf("+------------------------------------------------------------+\n\n");
+
+    printf("+---------+---------+-------+------------+------------+-----------+----------+----------+\n");
+    printf("| Process | Arrival | Burst | Completion | Turnaround |  Waiting  | Response | Exec Cnt |\n");
+    printf("+---------+---------+-------+------------+------------+-----------+----------+----------+\n");
+    
+    for (int i = 0; i < process_count; i++) {
+        printf("| P%-6d | %-7d | %-5d | %-10d | %-10d | %-9d | %-8d | %-8d |\n",
+               processes[i].name,
+               processes[i].arr,
+               processes[i].bur,
+               processes[i].done,
+               processes[i].tat,
+               processes[i].wt,
+               processes[i].response_time,
+               processes[i].execution_count);
+    }
+    
+    printf("+---------+---------+-------+------------+------------+-----------+----------+----------+\n");
+    printf("| Average |         |       |            | %-10.2f | %-9.2f |          |          |\n", 
+           total_tat / process_count, total_wt / process_count);
+    printf("+---------+---------+-------+------------+------------+-----------+----------+----------+\n");
+
+    printf("\n+--------------------------------------+\n");
+    printf("|    Additional Statistics             |\n");
+    printf("+--------------------------------------+\n");
+    printf("| Total Execution Time: %d ms           |\n", gantt_end[index - 1]);
+    printf("| Total CPU Time:       %d ms           |\n", total_cpu_time);
+    printf("| CPU Utilization:      %.2f%%          |\n", 
+           (total_cpu_time * 100.0) / gantt_end[index - 1]);
+    printf("| Number of Processes:  %d              |\n", process_count);
+    printf("| Quantum Time:         %d ms           |\n", quantum_time);
+    printf("+--------------------------------------+\n");
+
+    free_queue(&ready_queue);
+}
+
+void show_menu() {
+    printf("\n+--------------------------------------+\n");
+    printf("|     Round Robin Scheduler Menu       |\n");
+    printf("+--------------------------------------+\n");
+    printf("| 1. Add Process                       |\n");
+    printf("| 2. Remove Process                    |\n");
+    printf("| 3. Set Quantum Time                   |\n");
+    printf("| 4. Display Processes                  |\n");
+    printf("| 5. Run Simulation                     |\n");
+    printf("| 0. Exit                               |\n");
+    printf("+--------------------------------------+\n");
+    printf("Enter your choice: ");
+}
+
+int main() {
+    int choice;
+    
+    printf("+--------------------------------------+\n");
+    printf("|   Round Robin Scheduling Simulator   |\n");
+    printf("|      Dynamic Process Management      |\n");
+    printf("+--------------------------------------+\n\n");
+
+    do {
+        show_menu();
+        if (scanf("%d", &choice) != 1) {
+            printf("[X] Invalid input! Please enter a number.\n");
+            clear_input_buffer();
+            choice = -1;
+            continue;
+        }
+        
+        switch(choice) {
+            case 1:
+                add_process();
+                break;
+            case 2:
+                remove_process();
+                break;
+            case 3:
+                set_quantum();
+                break;
+            case 4:
+                display_processes();
+                break;
+            case 5:
+                run_simulation();
+                break;
+            case 0:
+                printf("\n[+] Thank you for using Round Robin Scheduler!\n");
+                break;
+            default:
+                printf("\n[X] Invalid choice! Please try again.\n");
+        }
+    } while (choice != 0);
+
+    return 0;
+}
