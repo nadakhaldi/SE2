@@ -3,13 +3,6 @@
  *   MEMORY MANAGEMENT SIMULATOR — C++ VERSION
  *   TP3 SE2 — Mohamed Khider University, Biskra
  *   Academic Year 2025/2026
- *   
- *   CORRECTIONS APPLIED:
- *   - Fixed Partition: Added deallocate(), drainWaitQueue(),
- *     displayWaitQueue(), waitQueue support
- *   - Variable Partition: Removed performanceComparison()
- *   - Variable Partition: REJECTED if size > totalSize
- *   - All other code kept exactly as written
  * ============================================================ */
 
 #include <iostream>
@@ -85,7 +78,7 @@ class FixedPartitionSimulator {
 private:
     vector<Partition> partitions;
     vector<Process>   processes;
-    vector<Process>   waitQueue;   // processes that couldn't be allocated
+    vector<Process>   waitQueue; 
 
     int getProcessSize(int pid) const {
         for (const auto& p : processes)
@@ -175,7 +168,7 @@ public:
         bool allocatedNow = false;
         bool suitableBlockExists = false;
 
-        // نجيبو أكبر block
+      
         int largestBlock = 0;
         for (const auto& part : partitions) {
             if (part.size > largestBlock)
@@ -190,7 +183,6 @@ public:
             continue;
         }
 
-        // نفتشو على البلوكات
         for (auto& part : partitions) {
 
             if (part.size >= proc.size) {
@@ -467,7 +459,7 @@ public:
             return false;
         }
 
-        // ✅ REJECTED: حجمه أكبر من الذاكرة الكاملة — مستحيل يتحمل حتى لو فارغة
+        // REJECTED: حجمه أكبر منsize of memory — مستحيل يتحمل حتى لو فارغة
         if (size > totalSize) {
             cout << "  [REJECTED] P" << pid << " (" << size
                  << " KB) — exceeds total memory (" << totalSize << " KB).\n";
